@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{SERVER_NAME}} – setup</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1c2330;--mut:#667085;--line:#d9dde4;--acc:#2f6fed;--on:#d9480f;--off:#2b8a3e;--bad:#c92a2a}
+@media (prefers-color-scheme:dark){:root{--bg:#14171c;--card:#1d222a;--fg:#e6e9ee;--mut:#98a2b3;--line:#323946;--acc:#6b9bff;--on:#ff8c5a;--off:#51cf66;--bad:#ff6b6b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
+main{max-width:60rem;margin:0 auto;padding:1rem}
+h1{font-size:1.3rem;margin:.2rem 0 1rem}h2{font-size:1.05rem;margin:1.6rem 0 .5rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.9rem 1rem;margin:.7rem 0}
+table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--mut);font-weight:500;font-size:.85rem}
+td,th{padding:.3rem .4rem;vertical-align:middle}
+input,select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.3rem .5rem;width:100%}
+input[type=number]{width:5rem}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:6px;padding:.3rem .7rem;cursor:pointer}
+button.p{background:var(--acc);border-color:var(--acc);color:#fff}button.d{color:var(--bad)}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:.8rem;flex-wrap:wrap;align-items:end}.row>label{flex:1 1 11rem;font-size:.8rem;color:var(--mut)}
+.row>label.n{flex:0 0 6rem}
+.dot{display:inline-block;width:.8rem;height:.8rem;border-radius:50%;background:var(--mut);vertical-align:middle;margin-right:.35rem}
+.dot.on{background:var(--on)}.dot.off{background:var(--off)}
+.mut{color:var(--mut);font-size:.85rem}.msg{min-height:1.3rem;margin:.5rem 0;font-size:.9rem}.msg.err{color:var(--bad)}
+code{font-size:.85rem}
+.scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<main>
+<h1>{{SERVER_NAME}}</h1>
+<div id="msg" class="msg"></div>
+
+<h2>Boards detected on USB</h2>
+<div class="card scroll"><table id="detected"></table>
+<p class="mut">Boards are identified by the USB port they are plugged into – keep each board in the same port.
+The 5-character board serial is set at the factory and often identical across boards.</p></div>
+
+<h2>Alpaca devices</h2>
+<p class="mut">Each device is one board. The device number is what clients such as NINA see
+(<code>/api/v1/switch/<b>N</b>/…</code>). Changes are saved immediately on <b>Save</b> and take effect without a restart;
+a client connected to a device whose hardware you change must reconnect.</p>
+<div id="devices"></div>
+</main>
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, props = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "dataset") Object.assign(e.dataset, v); else e[k] = v;
+  }
+  for (const c of kids) e.append(c);
+  return e;
+};
+let S = null;
+
+function say(text, err) { const m = $("#msg"); m.textContent = text || ""; m.className = "msg" + (err ? " err" : ""); }
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.description || j.title || r.statusText);
+  return j;
+}
+const nextFree = () => { const used = new Set(S.devices.map(d => d.number)); let i = 0; while (used.has(i)) i++; return i; };
+
+async function load(full = true) {
+  try { S = await api("GET", "/setup/api/state"); } catch (e) { say("Cannot reach server: " + e.message, true); return; }
+  if (full) render(); else refreshStates();
+}
+
+function render() {
+  const dt = $("#detected"); dt.replaceChildren(
+    el("tr", {}, ...["Device node", "USB port", "Serial", "Channels", "Used by", ""].map(h => el("th", { textContent: h }))));
+  if (!S.detected.length) dt.append(el("tr", {}, el("td", { colSpan: 6, class: "mut", textContent: "No boards found (or no permission to read /dev/hidraw* – see README for the udev rule)." })));
+  for (const b of S.detected) {
+    const owner = S.devices.find(d => d.number === b.assigned);
+    dt.append(el("tr", {},
+      el("td", {}, el("code", { textContent: b.devnode })), el("td", {}, el("code", { textContent: b.usb_path })),
+      el("td", {}, el("code", { textContent: b.serial || "?" })), el("td", { textContent: b.channels }),
+      el("td", { textContent: owner ? `#${owner.number} ${owner.name}` : "– not configured –" }),
+      el("td", {}, b.assigned == null ? el("button", { class: "p", textContent: "Add as device", onclick: () => addDevice(b) }) : "")));
+  }
+  const box = $("#devices"); box.replaceChildren();
+  if (!S.devices.length) box.append(el("p", { class: "mut", textContent: "No devices yet – add a detected board above." }));
+  for (const d of S.devices) box.append(card(d));
+  refreshStates();
+}
+
+function card(d) {
+  const f = {};
+  const field = (label, cls, input) => el("label", { class: cls || "" }, label, input);
+  const portSel = el("select");
+  const ports = new Map(S.detected.map(b => [b.usb_path, `${b.usb_path} (${b.devnode})`]));
+  if (d.usb_path && !ports.has(d.usb_path)) ports.set(d.usb_path, `${d.usb_path} (not detected)`);
+  if (d.mock) portSel.append(el("option", { value: "", textContent: "(mock board – no hardware)" }));
+  for (const [v, t] of ports) portSel.append(el("option", { value: v, textContent: t, selected: v === d.usb_path }));
+  f.number = el("input", { type: "number", min: 0, value: d.number });
+  f.name = el("input", { type: "text", value: d.name });
+  f.channels = el("input", { type: "number", min: 1, max: 64, value: d.channels ?? d.max_switch });
+  const rows = d.outputs.map((o, i) => {
+    const dot = el("span", { class: "dot", dataset: { dev: d.number, ch: i } });
+    const nm = el("input", { type: "text", value: o.name });
+    const ds = el("input", { type: "text", value: o.description });
+    const b = el("button", { textContent: "Switch…", title: "Energise / release this relay's coil", onclick: () => toggle(d.number, i, nm.value) });
+    f["o" + i] = [nm, ds];
+    return el("tr", {}, el("td", {}, dot, String(i + 1)), el("td", {}, nm), el("td", {}, ds), el("td", { dataset: { st: `${d.number}:${i}` }, class: "mut" }), el("td", {}, b));
+  });
+  const save = async () => {
+    try {
+      const body = { number: +f.number.value, name: f.name.value, usb_path: portSel.value, channels: +f.channels.value || null, mock: d.mock && !portSel.value,
+        outputs: d.outputs.map((_, i) => ({ name: f["o" + i][0].value, description: f["o" + i][1].value })) };
+      const det = S.detected.find(b => b.usb_path === portSel.value);
+      body.serial = det ? det.serial : d.serial;
+      await api("PUT", `/setup/api/devices/${d.number}`, body); say(`Saved #${body.number} ${body.name}.`); await load();
+    } catch (e) { say(e.message, true); }
+  };
+  const del = async () => {
+    if (!confirm(`Remove device #${d.number} "${d.name}"? (The board itself is not touched.)`)) return;
+    try { await api("DELETE", `/setup/api/devices/${d.number}`); say("Removed."); await load(); } catch (e) { say(e.message, true); }
+  };
+  return el("div", { class: "card" },
+    el("div", { class: "row" }, field("Device #", "n", f.number), field("Name", "", f.name), field("USB port", "", portSel), field("Channels", "n", f.channels)),
+    el("div", { class: "scroll" }, el("table", {},
+      el("tr", {}, ...["Output", "Name", "Description", "Coil", ""].map(h => el("th", { textContent: h }))), ...rows)),
+    el("p", { class: "mut", textContent: "Coil ON = relay energised (NO contact closed, NC contact open). Coil OFF = released (NC closed)." }),
+    el("div", { class: "row" }, el("button", { class: "p", textContent: "Save", onclick: save }),
+      el("button", { class: "d", textContent: "Remove device", onclick: del }),
+      el("span", { class: "mut", textContent: `Alpaca ID ${d.unique_id}` })));
+}
+
+function refreshStates() {
+  for (const d of S.devices) d.outputs.forEach((_, i) => {
+    const dot = $(`.dot[data-dev="${d.number}"][data-ch="${i}"]`), st = $(`[data-st="${d.number}:${i}"]`);
+    if (!dot || !st) return;
+    const v = d.state ? d.state[i] : null;
+    dot.className = "dot" + (v === true ? " on" : v === false ? " off" : "");
+    st.textContent = v === null ? "unreadable" : v ? "ON" : "OFF";
+  });
+}
+
+async function toggle(num, ch, name) {
+  const d = S.devices.find(x => x.number === num), cur = d.state && d.state[ch];
+  const want = !cur;
+  if (!confirm(`This ${want ? "ENERGISES" : "RELEASES"} output ${ch + 1} ("${name}") on device #${num} right now.\n\nAnything wired through it will change state. Continue?`)) return;
+  try { Object.assign(d, await api("POST", `/setup/api/devices/${num}/channels/${ch}`, { state: want })); refreshStates(); say(`Output ${ch + 1} → coil ${want ? "ON" : "OFF"}.`); }
+  catch (e) { say(e.message, true); }
+}
+
+async function addDevice(b) {
+  const number = nextFree();
+  const name = prompt("Name for this device:", `NOYITO Relay ${number + 1}`);
+  if (!name) return;
+  try { await api("POST", "/setup/api/devices", { number, name, usb_path: b.usb_path, serial: b.serial, channels: b.channels }); say(`Added #${number}.`); await load(); }
+  catch (e) { say(e.message, true); }
+}
+
+load();
+setInterval(() => { if (!document.hidden) load(false); }, 5000);
+</script>
+</body>
+</html>

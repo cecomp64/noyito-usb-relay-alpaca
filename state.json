@@ -1,0 +1,30 @@
+{
+  "956332dc-9ec5-589c-be45-b8e7d17ac750": {
+    "names": {
+      "0": "Accessories",
+      "1": "Mount",
+      "2": "Mini PC",
+      "3": "Relay 4"
+    },
+    "descriptions": {
+      "0": "Cameras, dew heater, everything on top of the scope",
+      "1": "Dedicated Mount Power",
+      "2": "Dedicated PC Power",
+      "3": "NOYITO relay channel 4"
+    }
+  },
+  "a1f80346-e8b0-5df5-8a98-eecdd3827f86": {
+    "names": {
+      "0": "Relay 1",
+      "1": "Relay 2",
+      "2": "Relay 3",
+      "3": "Relay 4"
+    },
+    "descriptions": {
+      "0": "NOYITO relay channel 1",
+      "1": "NOYITO relay channel 2",
+      "2": "NOYITO relay channel 3",
+      "3": "NOYITO relay channel 4"
+    }
+  }
+}

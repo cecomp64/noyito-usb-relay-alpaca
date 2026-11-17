@@ -1,0 +1,2 @@
+# NOYITO / DCTTech HID USB relay boards: allow members of plugdev to talk to them via hidraw
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="05df", MODE="0660", GROUP="plugdev", TAG+="uaccess"

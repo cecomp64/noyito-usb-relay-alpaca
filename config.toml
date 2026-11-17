@@ -1,0 +1,33 @@
+# NOYITO USB Relay - Alpaca server configuration
+#
+# Run `python -m noyito_alpaca --list` to see attached boards and the values to use below.
+# These [[device]] blocks only SEED devices.json on first start; afterwards manage devices at /setup.
+# Add as many [[device]] blocks as you have boards.
+
+[server]
+ip_address = "0.0.0.0"
+port = 11111            # Alpaca default
+server_name = "NOYITO USB Relay Alpaca Server"
+location = "Observatory"
+discovery = true        # answer Alpaca UDP discovery on port 32227
+log_level = "INFO"
+state_file = "state.json"   # channel names/descriptions edited by clients are saved here
+
+# Identify each board by usb_path (physical USB port - always unique) and/or serial.
+# The 5-char factory "serial" is NOT guaranteed unique (boards from one batch often share it; yours share "AAMZ" after the first byte),
+# so usb_path is recommended. Keep each board in the same port.
+
+[[device]]
+name = "NOYITO Relay 1"
+usb_path = "usb-xhci-hcd.1-1.3"
+names = ["Relay 1", "Relay 2", "Relay 3", "Relay 4"]       # optional defaults
+
+[[device]]
+name = "NOYITO Relay 2"
+usb_path = "usb-xhci-hcd.1-1.4.4"
+
+# Development without hardware:
+# [[device]]
+# name = "Mock relay"
+# mock = true
+# channels = 4
