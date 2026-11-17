@@ -3,9 +3,15 @@
 Linux/Raspberry Pi Alpaca **Switch** driver for NOYITO / DCTTech HID USB relay boards (USB 16c0:05df, "USBRelay4").
 One server exposes **N boards** as N Alpaca Switch devices (device numbers 0..N-1, in `config.toml` order).
 
+![NOYITO 4-channel USB relay board](images/noyito.jpg)
+
 - Talks to the boards natively through `/dev/hidraw*` (HID feature reports) – no libhidapi, no UsbRelayNet.
 - Falcon-based Alpaca API (interface v3), management API, UDP discovery, and a `/setup` page for channel names.
 - Channel names/descriptions set by clients (e.g. NINA) are saved in `state.json`.
+
+> **Looking for a Windows driver?** For the traditional (COM-based) ASCOM Switch driver for these boards, see
+> [ascom.noyito.switch](https://bitbucket.org/cesvensson/ascom.noyito.switch/src/main/). This project is the
+> Linux/Raspberry Pi Alpaca alternative, usable from any Alpaca client over the network.
 
 ## Install
 
@@ -29,7 +35,11 @@ sudo cp systemd/noyito-alpaca.service /etc/systemd/system/ && sudo systemctl ena
 Open `http://<pi>:11111/setup`. In NINA / other Alpaca clients the server appears via discovery
 (or add `<pi>:11111` manually).
 
+![Each board appears as its own Alpaca Switch device in NINA](images/nina.png)
+
 ## Configuration web page (`/setup`)
+
+![The /setup page](images/setup.png)
 
 - Lists the boards detected on USB and which Alpaca device (if any) each one belongs to; **Add as device** creates one.
 - Edit per device: Alpaca device number, name, USB port, channel count, and **name / description of every output**
